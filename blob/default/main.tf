@@ -1,13 +1,3 @@
-# Service: Storage Account
-# PRE-REQ's = VNET subnets for VNET integration and Private Endpoint
-
-locals {
-  tags = merge({
-    product_line            = var.product_line
-    pipeline                = var.pipeline
-    automation              = var.automation
-  })
-}
 #######################
 # Create Resource Group
 ########################
@@ -22,11 +12,9 @@ resource "azurerm_resource_group" "this" {
 
 module "module-blob" {
     source  = "git@github.com:terraform/terraform-modules.git//blob?ref=main"
-    #source  = "./../../../aya-terraform-modules/blob"
+    #source  = "./../../../terraform-modules/blob"
         providers = {
         azurerm.thissub             = azurerm.thissub
-        azurerm.sharedsvcsub        = azurerm.sharedsvcsub # to access diag storge account
-        azurerm.entsharedsvcsub     = azurerm.entsharedsvcsub # to registar Private DNS entry
       }
 
     ##Storage Account  
