@@ -19,7 +19,7 @@ resource "azurerm_resource_group" "rg" {
 #################
 module "service_plan" {
   source              = "git@github.com:terraform-modules.git//appService?ref=main"
-  #source              = "./../../../aya-terraform-modules/appService"
+  #source              = "./../../../terraform-modules/appService"
     providers = {
     azurerm.shared        = azurerm.shared
     }
