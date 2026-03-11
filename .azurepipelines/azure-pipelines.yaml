@@ -12,7 +12,7 @@ pr: none
 parameters:
   - name: directorypath
     type: string
-    default: infrastructure/microserviceapp/common
+    default: infrastructure/myapp
   - name: environments
     type: object
     default:
@@ -107,4 +107,5 @@ stages:
 # - Parameterized environments and directory paths for flexible multi-environment deployments
 # - Build and deploy stages use external templates for modularity
 # - All secrets/keys are referenced via Azure DevOps secure files/variable groups
+
 # - No real secrets or sensitive values are present in this template
