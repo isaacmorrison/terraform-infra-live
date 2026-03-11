@@ -1,0 +1,46 @@
+trigger: none
+pr: none
+
+variables:
+- group: azdevopsterraform
+
+stages:
+  - stage: BuildHot
+    jobs:
+      - job: BuildHotAndPublish
+        pool: terraformpool
+        continueOnError: false
+        steps:
+        - task: InstallSSHKey@0
+          inputs:
+            knownHostsEntry: '$(ssh_known_hosts)'
+            sshPublicKey: '$(myPubKey)'
+            sshKeySecureFile: 'id_rsa'
+            
+        - task: CmdLine@2
+          displayName: terraform init
+          inputs:
+            script: |
+              echo Running Terrafrom Init
+              az login --identity &&
+              terraform init && terraform validate
+            workingDirectory: '$(System.DefaultWorkingDirectory)/blob/hot'
+            
+        - task: CmdLine@2
+          displayName: terraform plan
+          inputs:
+            script: |
+              echo Running Terrafrom Plan 
+              terraform plan -out="out.plan" -input=false
+            workingDirectory: '$(System.DefaultWorkingDirectory)/blob/hot'
+            
+        - task: CopyFiles@2
+          inputs:
+            Contents: 'blob/hot/*'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Plan Artifact'
+          inputs:
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+            artifactName: 'hotplan'

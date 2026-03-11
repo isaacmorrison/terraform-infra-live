@@ -1,0 +1,134 @@
+trigger: none
+pr: none
+
+variables:
+- group: azdevopsterraform
+
+stages:
+  - stage: BuildPOC
+    jobs:
+      - job: BuildPOCAndPublish
+        pool: terraformpool
+        continueOnError: false
+        steps:
+        - task: InstallSSHKey@0
+          inputs:
+            knownHostsEntry: '$(ssh_known_hosts)'
+            sshPublicKey: '$(myPubKey)'
+            sshKeySecureFile: 'id_rsa'
+            
+        - task: CmdLine@2
+          displayName: terraform init
+          inputs:
+            script: |
+              echo Running Terrafrom Init
+              az login --identity &&
+              terraform init && terraform validate
+            workingDirectory: '$(System.DefaultWorkingDirectory)/keyVault/poc'
+            
+        - task: CmdLine@2
+          displayName: terraform plan
+          inputs:
+            script: |
+              echo Running Terrafrom Plan 
+              terraform plan -out="out.plan" -input=false
+            workingDirectory: '$(System.DefaultWorkingDirectory)/keyVault/poc'
+            
+        - task: CopyFiles@2
+          inputs:
+            Contents: 'keyVault/poc/*'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Plan Artifact'
+          inputs:
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+            artifactName: 'pocplan'
+
+  - stage: DeployPOC
+    dependsOn: BuildPOC
+    jobs:
+    - deployment: DeployAndApplyTerraform
+      environment: POC
+      pool: terraformpool
+        # vmImage: ubuntu-latest
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: InstallSSHKey@0
+              inputs:
+                knownHostsEntry: '$(ssh_known_hosts)'
+                sshPublicKey: '$(myPubKey)'
+                sshKeySecureFile: 'id_rsa'
+            - task: CmdLine@2
+              displayName: terraform apply
+              inputs:
+                script: |
+                  echo Running Terrafrom Apply 
+                  terraform init && terraform apply "out.plan"
+                workingDirectory: '$(Pipeline.Workspace)/pocplan/keyVault/poc'
+  
+  - stage: BuildProd
+    jobs:
+      - job: BuildPlanAndPublish
+        pool: terraformpool
+        continueOnError: false
+        steps:
+        - task: InstallSSHKey@0
+          inputs:
+            knownHostsEntry: '$(ssh_known_hosts)'
+            sshPublicKey: '$(myPubKey)'
+            sshKeySecureFile: 'id_rsa'
+            
+        - task: CmdLine@2
+          displayName: terraform init
+          inputs:
+            script: |
+              echo Running Terrafrom Init
+              az login --identity &&
+              terraform init && terraform validate
+            workingDirectory: '$(System.DefaultWorkingDirectory)/keyVault/prod'
+            
+        - task: CmdLine@2
+          displayName: terraform plan
+          inputs:
+            script: |
+              echo Running Terrafrom Plan 
+              terraform plan -out="out.plan" -input=false
+            workingDirectory: '$(System.DefaultWorkingDirectory)/keyVault/prod'
+            
+        - task: CopyFiles@2
+          inputs:
+            Contents: 'keyVault/prod/*'
+            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Plan Artifact'
+          inputs:
+            targetPath: '$(Build.ArtifactStagingDirectory)'
+            artifactName: 'prodplan'
+
+  - stage: DeployProd
+    dependsOn: BuildProd
+    jobs:
+    - deployment: DeployAndApplyTerraform
+      environment: PROD
+      pool: terraformpool
+        # vmImage: ubuntu-latest
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: InstallSSHKey@0
+              inputs:
+                knownHostsEntry: '$(ssh_known_hosts)'
+                sshPublicKey: '$(myPubKey)'
+                sshKeySecureFile: 'id_rsa'
+            - task: CmdLine@2
+              displayName: terraform apply
+              inputs:
+                script: |
+                  echo Running Terrafrom Apply 
+                  terraform init && terraform apply "out.plan"
+                workingDirectory: '$(Pipeline.Workspace)/prodplan/keyVault/prod'
