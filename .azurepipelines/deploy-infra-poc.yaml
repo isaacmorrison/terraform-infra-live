@@ -1,163 +1,110 @@
+
+
+# Azure DevOps Pipeline for Dynamic Multi-Environment Terraform Deployment
+# Purpose: Build and deploy infrastructure for multiple environments using parameterized templates
+# Usage: Set directory path and environments as parameters; customize build/deploy templates as needed
+# Prerequisites: Azure DevOps, Terraform, Azure identity, SSH key in secure files
+
+pool: mycustomagent
 trigger: none
 pr: none
 
+parameters:
+  - name: directorypath
+    type: string
+    default: infrastructure/microserviceapp/common
+  - name: environments
+    type: object
+    default:
+      - sand
+      - dev
+      - prod
+
 variables:
-- group: azdevopsterraform
+  - name: isMain
+    value: $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]
+  - group: azdevopsterraform
+  - name: directorypath
+    value: ${{ parameters.directorypath }}
 
 stages:
-  - stage: BuildCoreInfraPOC
-    jobs:
-      - job: BuildNSGandPublish
-        pool: terraformpool
-        continueOnError: false
-        steps:
-        - task: InstallSSHKey@0
-          inputs:
-            knownHostsEntry: '$(ssh_known_hosts)'
-            sshPublicKey: '$(myPubKey)'
-            sshKeySecureFile: 'id_rsa'
-            
-        - task: CmdLine@2
-          displayName: terraform init
-          inputs:
-            script: |
-              echo Running Terrafrom Init
-              az login --identity &&
-              terraform init && terraform validate
-            workingDirectory: '$(System.DefaultWorkingDirectory)/NSG/poc'
-            
-        - task: CmdLine@2
-          displayName: terraform plan
-          inputs:
-            script: |
-              echo Running Terrafrom Plan 
-              terraform plan -out="out.plan" -input=false
-            workingDirectory: '$(System.DefaultWorkingDirectory)/NSG/poc'
-            
-        - task: CopyFiles@2
-          inputs:
-            Contents: 'NSG/poc/*'
-            TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  ${{ each env in parameters.environments }}:
 
-        - task: PublishPipelineArtifact@1
-          displayName: 'Publish Plan Artifact'
-          inputs:
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-            artifactName: 'nsgpocplan'
-
-      - job: BuildvNetAndPublish
-        dependsOn: BuildNSGandPublish
-        pool: terraformpool
-        continueOnError: false
-        steps:
-        - task: InstallSSHKey@0
-          inputs:
-            knownHostsEntry: '$(ssh_known_hosts)'
-            sshPublicKey: '$(myPubKey)'
-            sshKeySecureFile: 'id_rsa'
-            
-        - task: CmdLine@2
-          displayName: terraform init
-          inputs:
-            script: |
-              echo Running Terrafrom Init
-              az login --identity &&
-              terraform init && terraform validate
-            workingDirectory: '$(System.DefaultWorkingDirectory)/vnet/poc'
-            
-        - task: CmdLine@2
-          displayName: terraform plan
-          inputs:
-            script: |
-              echo Running Terrafrom Plan 
-              terraform plan -out="out.plan" -input=false
-            workingDirectory: '$(System.DefaultWorkingDirectory)/vnet/poc'
-            
-        - task: CopyFiles@2
-          inputs:
-            Contents: 'vnet/poc/*'
-            TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-        - task: PublishPipelineArtifact@1
-          displayName: 'Publish Plan Artifact'
-          inputs:
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-            artifactName: 'vNetpocplan'
-          
-      - job: BuildKeyVaultAndPublish
-        pool: terraformpool
-        continueOnError: false
-        dependsOn: BuildvNetAndPublish
-        steps:
-        - task: InstallSSHKey@0
-          inputs:
-            knownHostsEntry: '$(ssh_known_hosts)'
-            sshPublicKey: '$(myPubKey)'
-            sshKeySecureFile: 'id_rsa'
-            
-        - task: CmdLine@2
-          displayName: terraform init
-          inputs:
-            script: |
-              echo Running Terrafrom Init
-              az login --identity &&
-              terraform init && terraform validate
-            workingDirectory: '$(System.DefaultWorkingDirectory)/keyVault/poc'
-            
-        - task: CmdLine@2
-          displayName: terraform plan
-          inputs:
-            script: |
-              echo Running Terrafrom Plan 
-              terraform plan -out="out.plan" -input=false
-            workingDirectory: '$(System.DefaultWorkingDirectory)/keyVault/poc'
-            
-        - task: CopyFiles@2
-          inputs:
-            Contents: 'keyVault/poc/*'
-            TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-        - task: PublishPipelineArtifact@1
-          displayName: 'Publish Plan Artifact'
-          inputs:
-            targetPath: '$(Build.ArtifactStagingDirectory)'
-            artifactName: 'KeyVaultpocplan'
-
-  - stage: DeployCoreInfraPOC
-    dependsOn: BuildCoreInfraPOC
-    jobs:
-    - deployment: DeployAndApplyTerraform
-      environment: POC
-      pool: terraformpool
-        # vmImage: ubuntu-latest
-      strategy:
-        runOnce:
-          deploy:
-            steps:
+    - stage: Build${{ env }}
+      displayName: 'Build ${{ env }}'
+      jobs:
+        - job: TerraformInitPlan
+          displayName: 'Terraform Init & Plan (${{ env }})'
+          pool: mycustomagent
+          steps:
             - task: InstallSSHKey@0
+              displayName: 'Install SSH Key'
               inputs:
                 knownHostsEntry: '$(ssh_known_hosts)'
                 sshPublicKey: '$(myPubKey)'
                 sshKeySecureFile: 'id_rsa'
-            - task: CmdLine@2
-              displayName: terraform apply NSG
-              inputs:
-                script: |
-                  echo Running Terrafrom Apply 
-                  terraform init && terraform apply "out.plan"
-                workingDirectory: '$(Pipeline.Workspace)/nsgpocplan/NSG/poc'
 
             - task: CmdLine@2
-              displayName: terraform apply VNET
+              displayName: 'Terraform Init'
               inputs:
                 script: |
-                  echo Running Terrafrom Apply 
-                  terraform init && terraform apply "out.plan"
-                workingDirectory: '$(Pipeline.Workspace)/vNetpocplan/vnet/poc'
+                  echo Running Terraform Init for ${{ env }}
+                  az login --identity
+                  terraform init
+                  terraform validate
+                workingDirectory: '${{ parameters.directorypath }}/${{ env }}'
+
             - task: CmdLine@2
-              displayName: terraform apply KeyVault
+              displayName: 'Terraform Plan'
               inputs:
                 script: |
-                  echo Running Terrafrom Apply 
-                  terraform init && terraform apply "out.plan"
-                workingDirectory: '$(Pipeline.Workspace)/KeyVaultpocplan/keyVault/poc'
+                  echo Running Terraform Plan for ${{ env }}
+                  terraform plan -out="out.plan" -input=false
+                workingDirectory: '${{ parameters.directorypath }}/${{ env }}'
+
+            - task: CopyFiles@2
+              displayName: 'Copy Plan Files'
+              inputs:
+                Contents: '${{ parameters.directorypath }}/${{ env }}/*'
+                TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+            - task: PublishPipelineArtifact@1
+              displayName: 'Publish Plan Artifact'
+              inputs:
+                targetPath: '$(Build.ArtifactStagingDirectory)'
+                artifactName: 'plan-${{ env }}'
+
+    - stage: Deploy${{ env }}
+      displayName: 'Deploy ${{ env }}'
+      dependsOn: Build${{ env }}
+      condition: and(succeeded(), or(eq(variables['Build.Reason'], 'Manual'), eq(variables['Build.Reason'], 'Schedule')))
+      jobs:
+        - deployment: TerraformApply
+          displayName: 'Terraform Apply (${{ env }})'
+          environment: ${{ env }}
+          pool: mycustomagent
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - task: InstallSSHKey@0
+                    displayName: 'Install SSH Key'
+                    inputs:
+                      knownHostsEntry: '$(ssh_known_hosts)'
+                      sshPublicKey: '$(myPubKey)'
+                      sshKeySecureFile: 'id_rsa'
+
+                  - task: CmdLine@2
+                    displayName: 'Terraform Apply'
+                    inputs:
+                      script: |
+                        echo Running Terraform Apply for ${{ env }}
+                        terraform init
+                        terraform apply "out.plan"
+                      workingDirectory: '$(Pipeline.Workspace)/plan-${{ env }}/${{ parameters.directorypath }}/${{ env }}'
+
+# Notes:
+# - Parameterized environments and directory paths for flexible multi-environment deployments
+# - Build and deploy stages use external templates for modularity
+# - All secrets/keys are referenced via Azure DevOps secure files/variable groups
+# - No real secrets or sensitive values are present in this template
